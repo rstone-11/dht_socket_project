@@ -21,7 +21,7 @@ print(f"running on ip: {IP}")
 # Listen for incoming datagrams
 while True:
     data, address = serverSocket.recvfrom(4096)
-    print(f"Received {data} from {address}")
+    #print(f"Received {data} from {address}")
 
     message_text = data.decode('utf-8')
     parts = message_text.split()  # Split by whitespace to get command parts
@@ -109,9 +109,13 @@ while True:
 
     elif parts[0] == "dht-complete" and len(parts) == 2:
         peer_name = parts[1]
-        # Mark DHT as complete for this peer...
-        print(f"DHT complete for peer: {peer_name}")
-        # Implement necessary actions
+        if clients[0]['peer_name'] == peer_name:
+             # Mark DHT as complete for this peer...
+            print(f"DHT complete for peer: {peer_name}")
+            # Implement necessary actions
+            serverSocket.sendto(b"SUCCESS", address)
+        else:
+             serverSocket.sendto(b"FAILURE", address)
 
 
 
