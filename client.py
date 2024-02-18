@@ -1,6 +1,7 @@
 import socket
 import sys
 import random
+import json
 
 serverIP = sys.argv[1]
 serverPort = sys.argv[2] 
@@ -28,6 +29,8 @@ print(f"running on ip: {IP}")
 
 server_address = (serverIP, int(serverPort)) # Replace 'localhost' with the server's IP if different
 
+tuples = []
+
 try:
     # Send data
     #message = b'This is the message. It will be repeated.'
@@ -40,10 +43,28 @@ try:
 
     while True:
         message = input("Message to Manager: ")
+        parts = message.split()
         clientSocket.sendto(message.encode(), server_address)
 
-        data, server = clientSocket.recvfrom(4096)
-        print(f"Received {data} from {server}")
+        if parts[0] == "register":
+            data, server = clientSocket.recvfrom(4096)
+            print(data.decode('utf-8'))
+
+        elif parts[0] == "setup-dht":
+            data, server = clientSocket.recvfrom(4096)
+            print(data.decode('utf-8'))
+            if data.decode('utf-8') == 'SUCCESS':
+                n = int(parts[2])
+                for i in range(n):
+                    data, _ = clientSocket.recvfrom(4096)
+                    peer_info = data.decode('utf-8')
+                    dataTuple = json.loads(peer_info)
+                    tuples.append(dataTuple)
+                for peer_tuple in tuples:
+                    print(peer_tuple)
+
+        #data, server = clientSocket.recvfrom(4096)
+        #print(f"Received {data} from {server}")
 
 finally:
     print("Closing socket")
