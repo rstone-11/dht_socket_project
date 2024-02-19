@@ -6,11 +6,11 @@ import json
 portNum = sys.argv[1]
 clients = []
 
-# Create a UDP socket
+#create a UDP socket
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# Bind the socket to the server address and port
-server_address = ('', int(portNum)) # Use '' to bind to all available interfaces
+#bind the socket to the server address and port
+server_address = ('', int(portNum)) #use '' to bind to all available interfaces
 serverSocket.bind(server_address)
 
 print("UDP server up and listening")
@@ -18,26 +18,26 @@ hostname = socket.gethostname()
 IP = socket.gethostbyname(hostname)
 print(f"running on ip: {IP}")
 
-# Listen for incoming datagrams
+#listen for incoming datagrams
 while True:
     data, address = serverSocket.recvfrom(4096)
-    #print(f"Received {data} from {address}")
 
     message_text = data.decode('utf-8')
-    parts = message_text.split()  # Split by whitespace to get command parts
+    parts = message_text.split()  #split by whitespace to get command parts
 
-    # Process the command
+    #process the command
     if parts[0] == "register" and len(parts) == 5:
-        # Extract parameters from the command
+        #extract parameters from the command
         peer_name, ipv4_address, m_port, p_port = parts[1:]
-        # Process registration...
+
+        #process registration
         if any(client['peer_name'] == peer_name for client in clients):
                 print(f"peer name is not unique")
                 serverSocket.sendto(b"FAILURE",(ipv4_address, int(m_port)))
                 continue
-                # Peer name is not unique, so registration fails
+                #peer name is not unique, so registration fails
         else:
-            # If unique, add the new peer
+            #if unique, add the new peer
             clients.append({
                 'peer_name': peer_name,
                 'ipv4_address': ipv4_address,
@@ -46,7 +46,6 @@ while True:
                 'state': 'Free'
             })
             print(f"Registering peer: {peer_name}, Address: {ipv4_address}, M-port: {m_port}, P-port: {p_port}")
-            # Add logic to store these details in a suitable data structure
             serverSocket.sendto(b"SUCCESS",(ipv4_address, int(m_port)))
 
 
@@ -54,9 +53,7 @@ while True:
     elif parts[0] == "setup-dht" and len(parts) == 4:
         peer_name, n, YYYY = parts[1:]
         n = int(n)
-        # Process DHT setup...
         
-        # Add corresponding logic
         #check if peer-name is registered
         if not any(client['peer_name'] == peer_name for client in clients):
              serverSocket.sendto(b"FAILURE", address)
@@ -83,30 +80,30 @@ while True:
         
         print(f"Setting up DHT for peer: {peer_name}, N: {n}, YYYY: {YYYY}")
 
-        #Manager sets state of peer-name to Leader, selects n-1 Free users from registered players and changes each one’s state to InDHT
+        #manager sets state of peer-name to Leader of one who is specified in command
         for client in clients:
              if client['peer_name'] == peer_name:
                 client['state'] = 'Leader'
                 leader = client  
                 leader_address = (client['ipv4_address'], client['m_port'])
                 serverSocket.sendto(b"SUCCESS", (client['ipv4_address'], client['m_port']))
-             
-                
-
+            
+        #selects n-1 Free users from registered peers and changes each one’s state to InDHT
         selected_peers = [leader] + random.sample([client for client in clients if client['state'] == 'Free'], n-1)
         for peer in selected_peers[1:]:
              peer['state'] = 'InDHT'
-             
+     
         for peer in selected_peers:
              print(peer)
 
+        #sends each peer in the dht individually to the leader
         tuples = [[peer['peer_name'], peer['ipv4_address'], peer['p_port']] for peer in selected_peers]
         for tuple in tuples:
              peer_info = json.dumps(tuple)
              serverSocket.sendto(peer_info.encode('utf-8'), leader_address)
         
 
-
+    #means that the dht setup is complete
     elif parts[0] == "dht-complete" and len(parts) == 2:
         peer_name = parts[1]
         if clients[0]['peer_name'] == peer_name:
@@ -120,7 +117,7 @@ while True:
 
 
     else:
-        print("Unknown or malformed command.")
+        print("Unknown command")
         serverSocket.sendto(b"FAILURE", address)
 
 
