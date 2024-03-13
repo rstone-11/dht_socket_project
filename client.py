@@ -4,6 +4,7 @@ import random
 import json
 import threading
 import csv
+import math
 
 # Global variables to hold key data shared across functions
 tuples = []      # To store information about peers in the DHT
@@ -107,12 +108,20 @@ def handle_peer_socket(peerSocket):
                 record_counter = {peer_id: 0 for peer_id in range(n)}
 
                 #do hash functions
-                file_name = '1950-1952/details-1950.csv'
-                s = 449
+                #file_name = '1950-1952/details-1950.csv'
+                file_name = f"1950-1952/details-{year}.csv"
+                #s = 449
                 #get event_id
                 with open(file_name, mode='r') as csvfile:
-                    csvreader = csv.DictReader(csvfile)
-                    for row in csvreader:
+                    #list of dictionaries
+                    #attributes - EVENT_ID,STATE,YEAR,MONTH_NAME,EVENT_TYPE,CZ_TYPE,CZ_NAME,INJURIES_DIRECT,INJURIES_INDIRECT,DEATHS_DIRECT,DEATHS_INDIRECT,DAMAGE_PROPERTY,DAMAGE_CROPS,TOR_F_SCALE
+                    rows = list(csv.DictReader(csvfile))
+                    #get length of list = number of rows
+                    row_count = len(rows)
+                    s = next_prime(2 * row_count)
+                    print(f"s: {s}")
+
+                    for row in rows:
                         event_id = int(row["EVENT_ID"])
                         event_string = json.dumps(row)  
 
@@ -198,6 +207,26 @@ def handle_peer_socket(peerSocket):
                 message_json = json.dumps(message_data)
                 message_bytes = message_json.encode('utf-8')
                 peerSocket.sendto(message_bytes, nextPeerAddress)
+
+
+def next_prime(n):
+    #brute force approach
+    def is_prime(num):
+        if num < 2:  # Numbers less than 2 are not prime
+            return False
+        for i in range(2, int(math.sqrt(num)) + 1):
+            if num % i == 0:
+                return False  # Found a divisor, num is not prime
+        return True  # No divisors found, num is prime
+    
+    prime = n
+    found = False
+    while not found:
+        prime += 1  # Try the next number
+        if is_prime(prime):
+            found = True  # Found a prime number
+    return prime  # Return the found prime number
+
 
 
 

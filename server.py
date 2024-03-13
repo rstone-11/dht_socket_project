@@ -101,26 +101,23 @@ while True:
         for tuple in tuples:
              peer_info = json.dumps(tuple)
              serverSocket.sendto(peer_info.encode('utf-8'), leader_address)
-        
 
-    #means that the dht setup is complete
-    elif parts[0] == "dht-complete" and len(parts) == 2:
-        peer_name = parts[1]
-        if clients[0]['peer_name'] == peer_name:
-             # Mark DHT as complete for this peer...
-            print(f"DHT complete for peer: {peer_name}")
-            # Implement necessary actions
-            serverSocket.sendto(b"SUCCESS", address)
+        #waits for the dht-complete command
+        data, address = serverSocket.recvfrom(4096)
+        message_text = data.decode('utf-8')
+        parts = message_text.split()  #split by whitespace to get command parts
+
+        if parts[0] == "dht-complete" and len(parts) == 2:
+          peer_name = parts[1]
+          if clients[0]['peer_name'] == peer_name:
+               # Mark DHT as complete for this peer
+               print(f"DHT complete for peer: {peer_name}")
+               serverSocket.sendto(b"SUCCESS", address)
+
+          else: serverSocket.sendto(b"FAILURE", address)
         else:
              serverSocket.sendto(b"FAILURE", address)
-
-
-
+        
     else:
-        print("Unknown command")
-        serverSocket.sendto(b"FAILURE", address)
-
-
-
-
-
+          print("Unknown command")
+          serverSocket.sendto(b"FAILURE", address)
