@@ -12,6 +12,7 @@ year = None      # The year of the dataset to be processed
 identifier = None    # The identifier of this peer within the DHT
 n = None      # The total number of peers in the DHT
 manager_address = None     # The address of the manager node
+s = None      #used in the hash function
 
 """
 Handles commands input by the user to interact with the manager.
@@ -75,15 +76,72 @@ def handle_manager_input(clientSocket, server_address):
                 message_bytes = message_json.encode('utf-8')
                 #sends these bytes to its neighbor or (identifier+1)%n
                 peerSocket.sendto(message_bytes, nextPeerAddress)
-    
 
+        elif parts[0] == "query-dht":
+            #expect 3-tuple of random peer - [name, ip address, p-port] or FAILURE
+            data, address = clientSocket.recvfrom(4096)
+            r_info = data.decode('utf-8')
+
+            if isinstance(r_info, str) and r_info == 'FAILURE':
+                print('FAILURE - received failure from manager')
+                continue
+
+            r_peer = json.loads(r_info)
+            random_address = (r_peer[1], r_peer[2])
+
+            #send a find-event command to this peer 
+            #for now hardcode the event_id
+
+            #I = list from 0 to n-1
+            n = r_peer[5]
+            I = list(range(n))
+            id_seq = []
+
+            message_data = {
+                "command": "find-event",
+                "event_id": 10096225,
+                "s_tuple": (r_peer[3], r_peer[4], peerPort),
+                "I": I,
+                "id_seq": id_seq
+            }
+            
+            message_json = json.dumps(message_data)
+            message_bytes = message_json.encode('utf-8')
+            peerSocket.sendto(message_bytes, random_address)
+            
+            """
+            #waits for response which is (SUCCESS, record, seq-id) or (FAILURE)
+            data,_ = peerSocket.recvfrom(4096)
+            #response_tuple = json.loads(data)
+            #record = json.loads(response_tuple)
+            #if response_tuple[0] == 'SUCCESS':
+            response_dict = json.loads(data)
+            record = response_dict['record']
+            result = response_dict['result']
+            id_seq = response_dict['id_seq']
+            if result == "SUCCESS":
+                print('SUCCESS')
+                #print the record
+                for key,val in record.items():
+                    print(f"{key}: {val}")
+
+                #print the suquence of peers visited
+                #print(f"id-seq: {response_tuple[2]}")
+                print(f"id_seq: {id_seq}")
+                    
+            else:
+                print(f"Storm event {10096225} not found in the DHT")
+            """
+
+
+            
         
 """
     Handles messages received from other peers in the DHT.
     param peerSocket: The socket for peer-to-peer communication.
 """
 def handle_peer_socket(peerSocket):
-    global identifier, n, tuples
+    global identifier, n, tuples, s
     #dict to store locally hashed records
     local_hash = {}
     
@@ -144,7 +202,8 @@ def handle_peer_socket(peerSocket):
                                 "command": "store",
                                 "peer_identifier": peer_id,
                                 "event_string": event_string,
-                                "pos": pos
+                                "pos": pos,
+                                "s": s
                             }
                             message_json = json.dumps(message_data)
                             message_bytes = message_json.encode('utf-8')
@@ -189,6 +248,10 @@ def handle_peer_socket(peerSocket):
             peer_identifier = message_data['peer_identifier']
             event_string = message_data['event_string']
             pos = message_data['pos']
+
+            if s is None or s != message_data['s']:
+                s = message_data['s']
+
             #send data to neighbor unless this is the right peer
             if identifier == peer_identifier:
                 #store in local hash
@@ -202,11 +265,98 @@ def handle_peer_socket(peerSocket):
                     "command": "store",
                     "peer_identifier": peer_identifier,
                     "event_string": event_string,
-                    "pos": pos
+                    "pos": pos,
+                    "s": s
                 }
                 message_json = json.dumps(message_data)
                 message_bytes = message_json.encode('utf-8')
                 peerSocket.sendto(message_bytes, nextPeerAddress)
+        
+        elif command == "find-event":
+
+            event_id = message_data['event_id']
+            s_tuple = message_data['s_tuple']
+            s_address = (s_tuple[1], s_tuple[2])
+
+            print(f"at identifier: {identifier}")
+            print(f"looking for event-id: {event_id}")
+            print(f"using s: {s}")
+
+            #remove peer from I and add to id-seq
+            I = message_data['I']
+            if identifier in I:
+                I.remove(identifier)
+            id_seq = message_data['id_seq']
+            id_seq.append(identifier)
+
+            #compute the pos and id from the event id
+            #check if you have the event-id in local hash
+            #hash: pos = event_id mod s, id = pos mod n
+            pos = event_id % s
+            peer_id = pos % n
+
+            if peer_id == identifier:
+                #check if its in the local hash
+                if pos in local_hash:
+                    #send 3-tuple to S (SUCCESS, event record, and set-id) else (FAILURE)
+                    event_string = local_hash[pos]
+                    event_success = {
+                        "command": "find-event-result",
+                        "result": "SUCCESS",
+                        "record": event_string,
+                        "id_seq": id_seq
+                    }
+                    event_bytes = json.dumps(event_success).encode('utf-8')
+                    peerSocket.sendto(event_bytes, s_address)
+                    #three_tuple = ('SUCCESS', event_string, id_seq)
+                    #three_tuple = json.dumps(three_tuple)
+                    #peerSocket.sendto(three_tuple.encode('utf-8'), s_address)
+                else:
+                    event_failure = {
+                        "command": "find-event-result",
+                        "result": "FAILURE"
+                    }
+                    event_bytes = json.dumps(event_failure).encode('utf-8')
+                    peerSocket.sendto(event_bytes, s_address)
+                    #value = json.dumps('FAILURE',)
+                    #peerSocket.sendto(value.encode('utf-8'), s_address)
+
+            #forwarded using hot-potato protocal
+            else:
+                next_peer_id = random.choice(I)
+                #get peer from tuples
+                next_peer = tuples[next_peer_id]
+                next_peer_address = (next_peer[1], next_peer[2])
+
+                forward_data = {
+                    "command": "find-event",
+                    "event_id": event_id,
+                    "s_tuple": s_tuple,
+                    "I": I,
+                    "id_seq": id_seq
+                }
+                forward_bytes = json.dumps(forward_data).encode('utf-8')
+                peerSocket.sendto(forward_bytes, next_peer_address)
+
+        elif command == 'find-event-result':
+            result = message_data['result']
+            record_json = message_data['record']
+            record = json.loads(record_json)
+            id_seq = message_data['id_seq']
+            if result == "SUCCESS":
+                print('SUCCESS')
+                #print the record
+                for key,val in record.items():
+                    print(f"{key}: {val}")
+
+                #print the suquence of peers visited
+                #print(f"id-seq: {response_tuple[2]}")
+                print(f"id_seq: {id_seq}")
+                    
+            else:
+                print(f"Storm event {10096225} not found in the DHT")
+            
+
 
 
 def next_prime(n):
@@ -226,8 +376,6 @@ def next_prime(n):
         if is_prime(prime):
             found = True  # Found a prime number
     return prime  # Return the found prime number
-
-
 
 
 if __name__ == "__main__":

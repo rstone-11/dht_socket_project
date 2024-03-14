@@ -5,6 +5,7 @@ import json
 
 portNum = sys.argv[1]
 clients = []
+selected_peers = []
 
 #create a UDP socket
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -109,7 +110,7 @@ while True:
 
         if parts[0] == "dht-complete" and len(parts) == 2:
           peer_name = parts[1]
-          if clients[0]['peer_name'] == peer_name:
+          if selected_peers[0]['peer_name'] == peer_name:
                # Mark DHT as complete for this peer
                print(f"DHT complete for peer: {peer_name}")
                serverSocket.sendto(b"SUCCESS", address)
@@ -117,6 +118,40 @@ while True:
           else: serverSocket.sendto(b"FAILURE", address)
         else:
              serverSocket.sendto(b"FAILURE", address)
+
+    elif parts[0] == "query-dht" and len(parts) == 2:
+         #make sure dht is setup
+         if not selected_peers:
+              print('dht is not setup')
+              serverSocket.sendto(b"FAILURE", address)
+              continue
+
+         #make sure S is registered and free
+         name = parts[1]
+         print(f"looking for: {name} in clients")
+         peer_S = None
+         for client in clients:
+              if client['peer_name'] == name:
+                   peer_S = client
+
+         if peer_S is None:
+              print('client is not registered')
+              serverSocket.sendto(b"FAILURE", address)
+              continue
+
+         if peer_S['state'] != 'Free':
+              print('client is registered but not free')
+              serverSocket.sendto(b"FAILURE", address)
+              continue     
+
+         #choose one of the peers in the DHT at random
+         random_peer = random.choice(selected_peers)
+
+         #sends a 3-tuple of this peers info back to S and S's name and ip
+         r_tuple = random_peer['peer_name'], random_peer['ipv4_address'], random_peer['p_port'], peer_S['peer_name'], peer_S['ipv4_address'], len(selected_peers)
+         r_tuple = json.dumps(r_tuple)
+         serverSocket.sendto(r_tuple.encode('utf-8'), address)
+
         
     else:
           print("Unknown command")
