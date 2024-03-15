@@ -128,7 +128,7 @@ while True:
 
          #make sure S is registered and free
          name = parts[1]
-         print(f"looking for: {name} in clients")
+         #print(f"looking for: {name} in clients")
          peer_S = None
          for client in clients:
               if client['peer_name'] == name:

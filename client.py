@@ -96,10 +96,12 @@ def handle_manager_input(clientSocket, server_address):
             n = r_peer[5]
             I = list(range(n))
             id_seq = []
-
+            set_of_ids = [5536849, 2402920, 5539287, 55770111]
+            random_id = random.choice(set_of_ids)
+            print(f'event_id is {random_id}')
             message_data = {
                 "command": "find-event",
-                "event_id": 10096225,
+                "event_id": random_id,
                 "s_tuple": (r_peer[3], r_peer[4], peerPort),
                 "I": I,
                 "id_seq": id_seq
@@ -108,33 +110,7 @@ def handle_manager_input(clientSocket, server_address):
             message_json = json.dumps(message_data)
             message_bytes = message_json.encode('utf-8')
             peerSocket.sendto(message_bytes, random_address)
-            
-            """
-            #waits for response which is (SUCCESS, record, seq-id) or (FAILURE)
-            data,_ = peerSocket.recvfrom(4096)
-            #response_tuple = json.loads(data)
-            #record = json.loads(response_tuple)
-            #if response_tuple[0] == 'SUCCESS':
-            response_dict = json.loads(data)
-            record = response_dict['record']
-            result = response_dict['result']
-            id_seq = response_dict['id_seq']
-            if result == "SUCCESS":
-                print('SUCCESS')
-                #print the record
-                for key,val in record.items():
-                    print(f"{key}: {val}")
 
-                #print the suquence of peers visited
-                #print(f"id-seq: {response_tuple[2]}")
-                print(f"id_seq: {id_seq}")
-                    
-            else:
-                print(f"Storm event {10096225} not found in the DHT")
-            """
-
-
-            
         
 """
     Handles messages received from other peers in the DHT.
@@ -143,8 +119,7 @@ def handle_manager_input(clientSocket, server_address):
 def handle_peer_socket(peerSocket):
     global identifier, n, tuples, s
     #dict to store locally hashed records
-    local_hash = {}
-    
+    local_hash = {} 
 
     while True:
         #waits for peer communication
@@ -167,7 +142,7 @@ def handle_peer_socket(peerSocket):
 
                 #do hash functions
                 #file_name = '1950-1952/details-1950.csv'
-                file_name = f"1950-1952/details-{year}.csv"
+                file_name = f"data/details-{year}.csv"
                 #s = 449
                 #get event_id
                 with open(file_name, mode='r') as csvfile:
@@ -181,7 +156,7 @@ def handle_peer_socket(peerSocket):
 
                     for row in rows:
                         event_id = int(row["EVENT_ID"])
-                        event_string = json.dumps(row)  
+                        #event_string = json.dumps(row)  
 
                         #pos = event_id mod s
                         pos = event_id % s
@@ -193,15 +168,19 @@ def handle_peer_socket(peerSocket):
                         record_counter[peer_id] += 1
 
                         #record is at the correct peer
-                        if(peer_id == identifier):
-                            local_hash[pos] = event_string
+                        if peer_id == identifier:
+                            if pos not in local_hash:
+                                local_hash[pos] = [row]
+                            else:
+                                local_hash[pos].append(row)
+                            
                         #record needs to be forwarded to the correct peer through the ring
                         else:
 
                             message_data = {
                                 "command": "store",
                                 "peer_identifier": peer_id,
-                                "event_string": event_string,
+                                "event_row": row,
                                 "pos": pos,
                                 "s": s
                             }
@@ -246,7 +225,7 @@ def handle_peer_socket(peerSocket):
         elif command == "store":
             # store <peer identifier> <event_string> <pos>
             peer_identifier = message_data['peer_identifier']
-            event_string = message_data['event_string']
+            event_row = message_data['event_row']
             pos = message_data['pos']
 
             if s is None or s != message_data['s']:
@@ -255,7 +234,11 @@ def handle_peer_socket(peerSocket):
             #send data to neighbor unless this is the right peer
             if identifier == peer_identifier:
                 #store in local hash
-                local_hash[pos] = event_string
+                if pos not in local_hash:
+                    local_hash[pos] = [event_row]
+                else:
+                    local_hash[pos].append(event_row)
+                
                 
             else:
                 #send to neighbor
@@ -264,7 +247,7 @@ def handle_peer_socket(peerSocket):
                 message_data = {
                     "command": "store",
                     "peer_identifier": peer_identifier,
-                    "event_string": event_string,
+                    "event_row": event_row,
                     "pos": pos,
                     "s": s
                 }
@@ -278,9 +261,9 @@ def handle_peer_socket(peerSocket):
             s_tuple = message_data['s_tuple']
             s_address = (s_tuple[1], s_tuple[2])
 
-            print(f"at identifier: {identifier}")
-            print(f"looking for event-id: {event_id}")
-            print(f"using s: {s}")
+            #print(f"at identifier: {identifier}")
+            #print(f"looking for event-id: {event_id}")
+            #print(f"using s: {s}")
 
             #remove peer from I and add to id-seq
             I = message_data['I']
@@ -296,33 +279,39 @@ def handle_peer_socket(peerSocket):
             peer_id = pos % n
 
             if peer_id == identifier:
+                #print('Identifier matches')
                 #check if its in the local hash
                 if pos in local_hash:
+                    #print(f'pos is in local hash: {pos}')
                     #send 3-tuple to S (SUCCESS, event record, and set-id) else (FAILURE)
-                    event_string = local_hash[pos]
-                    event_success = {
-                        "command": "find-event-result",
-                        "result": "SUCCESS",
-                        "record": event_string,
-                        "id_seq": id_seq
-                    }
-                    event_bytes = json.dumps(event_success).encode('utf-8')
-                    peerSocket.sendto(event_bytes, s_address)
-                    #three_tuple = ('SUCCESS', event_string, id_seq)
-                    #three_tuple = json.dumps(three_tuple)
-                    #peerSocket.sendto(three_tuple.encode('utf-8'), s_address)
+                    for row in local_hash[pos]:
+                        #print(f"event at this row is {row['EVENT_ID']}")
+                        if int(row['EVENT_ID']) == event_id:
+                            #print('got the right event')
+                            event_row = row
+                            event_success = {
+                                "command": "find-event-result",
+                                "result": "SUCCESS",
+                                "record": event_row,
+                                "id_seq": id_seq
+                            }
+                            event_bytes = json.dumps(event_success).encode('utf-8')
+                            peerSocket.sendto(event_bytes, s_address)
+                            break
+                            
                 else:
                     event_failure = {
                         "command": "find-event-result",
-                        "result": "FAILURE"
+                        "result": "FAILURE",
+                        "event_id": event_id
                     }
                     event_bytes = json.dumps(event_failure).encode('utf-8')
                     peerSocket.sendto(event_bytes, s_address)
-                    #value = json.dumps('FAILURE',)
-                    #peerSocket.sendto(value.encode('utf-8'), s_address)
+                    
 
             #forwarded using hot-potato protocal
             else:
+                #print('not right peer being forwarded')
                 next_peer_id = random.choice(I)
                 #get peer from tuples
                 next_peer = tuples[next_peer_id]
@@ -340,21 +329,20 @@ def handle_peer_socket(peerSocket):
 
         elif command == 'find-event-result':
             result = message_data['result']
-            record_json = message_data['record']
-            record = json.loads(record_json)
-            id_seq = message_data['id_seq']
+            
             if result == "SUCCESS":
+                record = message_data['record']
                 print('SUCCESS')
                 #print the record
                 for key,val in record.items():
                     print(f"{key}: {val}")
 
                 #print the suquence of peers visited
-                #print(f"id-seq: {response_tuple[2]}")
+                id_seq = message_data['id_seq']
                 print(f"id_seq: {id_seq}")
                     
             else:
-                print(f"Storm event {10096225} not found in the DHT")
+                print(f"Storm event {message_data['event_id']} not found in the DHT")
             
 
 
