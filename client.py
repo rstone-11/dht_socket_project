@@ -37,6 +37,7 @@ def handle_manager_input(clientSocket, server_address):
             print(data.decode('utf-8'))
         #if the command sent to manager was a setup-dht command
         elif parts[0] == "setup-dht":
+            tuples.clear()
             #wait for response from manager
             data,_ = clientSocket.recvfrom(4096)
             print(data.decode('utf-8'))
@@ -128,6 +129,16 @@ def handle_manager_input(clientSocket, server_address):
 
             print(f"{message}")
             if message == "SUCCESS":
+
+                #send teardown command to peer
+                next_id = (identifier+1) % n
+                next_address = (tuples[next_id][1], tuples[next_id][2])
+                message = {
+                    "command": "teardown"
+                }
+                message_j = json.dumps(message)
+                peerSocket.sendto(message_j.encode('utf-8'), next_address)
+                """
                 name = tuples[identifier][0]
                 m = f"teardown-complete {name}"
                 #print(f'sending to {address}')
@@ -136,7 +147,7 @@ def handle_manager_input(clientSocket, server_address):
                 #expects either SUCCESS or FAILURE
                 data, _ = clientSocket.recvfrom(4096)
                 print(f'teardown-complete response: {data.decode('utf-8')}')
-
+                """
             else:
                 print(f'mesage was {message}')
 
@@ -155,6 +166,7 @@ def handle_peer_socket(peerSocket):
         data, address = peerSocket.recvfrom(4096)
         
         #data is sent in json, then checks what command was sent
+        
         message_data = json.loads(data)
         command = message_data["command"]
 
@@ -163,6 +175,8 @@ def handle_peer_socket(peerSocket):
             
             n = message_data["n"]
             tuples = message_data["tuples"]
+
+            print(f'identifier: {identifier}, name: {tuples[identifier][0]}')
 
             #means its looped back around to the leader and ring in complete
             if(identifier == 0):
@@ -257,8 +271,8 @@ def handle_peer_socket(peerSocket):
             event_row = message_data['event_row']
             pos = message_data['pos']
 
-            if s is None or s != message_data['s']:
-                s = message_data['s']
+            
+            s = message_data['s']
 
             #send data to neighbor unless this is the right peer
             if identifier == peer_identifier:
@@ -372,6 +386,38 @@ def handle_peer_socket(peerSocket):
                     
             else:
                 print(f"Storm event {message_data['event_id']} not found in the DHT")
+
+        elif command == "teardown":
+
+            if identifier == 0:
+
+                #delete own local hash
+                local_hash.clear()
+
+                name = tuples[identifier][0]
+                m = f"teardown-complete {name}"
+                #print(f'sending to {address}')
+                identifier = None
+                clientSocket.sendto(m.encode('utf-8'), server_address)
+
+                #expects either SUCCESS or FAILURE
+                data, _ = clientSocket.recvfrom(4096)
+                print(f"teardown-complete response: {data.decode('utf-8')}")
+            else:
+                #delete own local hash and send to its right neighbor
+                local_hash.clear()
+
+                next_id = (identifier+1) % n
+                next_address = (tuples[next_id][1], tuples[next_id][2])
+                message = {
+                    "command": "teardown"
+                }
+                identifier = None
+                message_j = json.dumps(message)
+                peerSocket.sendto(message_j.encode('utf-8'), next_address)
+
+        else:
+            print(f"Unkown command: {data}")
             
 
 
