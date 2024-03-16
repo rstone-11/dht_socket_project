@@ -19,6 +19,9 @@ hostname = socket.gethostname()
 IP = socket.gethostbyname(hostname)
 print(f"running on ip: {IP}")
 
+def dht_rebuild(peerName, newLeader):
+     
+
 #listen for incoming datagrams
 while True:
     data, address = serverSocket.recvfrom(4096)
