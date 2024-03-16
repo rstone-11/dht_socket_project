@@ -55,6 +55,7 @@ while True:
 
 
     elif parts[0] == "setup-dht" and len(parts) == 4:
+        tuples = None
         peer_name, n, YYYY = parts[1:]
         n = int(n)
         
@@ -84,6 +85,9 @@ while True:
         
         print(f"Setting up DHT for peer: {peer_name}, N: {n}, YYYY: {YYYY}")
 
+        leader = None
+        leader_address = None
+
         #manager sets state of peer-name to Leader of one who is specified in command
         for client in clients:
              if client['peer_name'] == peer_name:
@@ -91,6 +95,7 @@ while True:
                 leader = client  
                 leader_address = (client['ipv4_address'], client['m_port'])
                 serverSocket.sendto(b"SUCCESS", (client['ipv4_address'], client['m_port']))
+        print(f'leader of current dht is {leader} at {leader_address}')
             
         #selects n-1 Free users from registered peers and changes each one’s state to InDHT
         selected_peers = [leader] + random.sample([client for client in clients if client['state'] == 'Free'], n-1)
@@ -128,7 +133,9 @@ while True:
                print(f"DHT complete for peer: {peer_name}")
                serverSocket.sendto(b"SUCCESS", address)
 
-          else: serverSocket.sendto(b"FAILURE", address)
+          else: 
+               print('peer that sent dht-complete wasn\'t leader')
+               serverSocket.sendto(b"FAILURE", address)
         else:
              serverSocket.sendto(b"FAILURE", address)
 
