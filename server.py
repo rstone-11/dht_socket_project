@@ -152,7 +152,23 @@ while True:
          r_tuple = json.dumps(r_tuple)
          serverSocket.sendto(r_tuple.encode('utf-8'), address)
 
+    elif parts[0] == 'deregister' and len(parts) == 2:
+         peer_t = None
+         #make sure the peer is in a Free state
+         peer_name = parts[1]
+         for client in clients:
+              if client['peer_name'] == peer_name:
+                   peer_t = client
+          
+         #if so then remove peer from clients
+         if peer_t is not None and peer_t['state'] == 'Free':
+              clients.remove(peer_t)
+              serverSocket.sendto(b"SUCCESS", address)
+         #if not then return FAILURE
+         else:
+              serverSocket.sendto(b"FAILURE", address)
         
+          
     else:
           print("Unknown command")
           serverSocket.sendto(b"FAILURE", address)

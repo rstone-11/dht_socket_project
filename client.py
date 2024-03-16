@@ -111,6 +111,17 @@ def handle_manager_input(clientSocket, server_address):
             message_bytes = message_json.encode('utf-8')
             peerSocket.sendto(message_bytes, random_address)
 
+        elif parts[0] == 'deregister':
+            #expects either SUCCESS or FAILURE
+            data, _ = clientSocket.recvfrom(4096)
+            message = data.decode('utf-8')
+
+            if message == 'SUCCESS':
+                print("terminating...")
+                sys.exit(0)
+            else:
+                print('failed to deregister')
+
         
 """
     Handles messages received from other peers in the DHT.
