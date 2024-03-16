@@ -121,6 +121,24 @@ def handle_manager_input(clientSocket, server_address):
                 sys.exit(0)
             else:
                 print('failed to deregister')
+        
+        elif parts[0] == 'teardown-dht':
+            data, address = clientSocket.recvfrom(4096)
+            message = data.decode('utf-8')
+
+            print(f"{message}")
+            if message == "SUCCESS":
+                name = tuples[identifier][0]
+                m = f"teardown-complete {name}"
+                #print(f'sending to {address}')
+                clientSocket.sendto(m.encode('utf-8'), address)
+
+                #expects either SUCCESS or FAILURE
+                data, _ = clientSocket.recvfrom(4096)
+                print(f'teardown-complete response: {data.decode('utf-8')}')
+
+            else:
+                print(f'mesage was {message}')
 
         
 """

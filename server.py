@@ -95,6 +95,16 @@ while True:
              peer['state'] = 'InDHT'
      
         for peer in selected_peers:
+             for client in clients:
+                  if client['peer_name'] == peer['peer_name']:
+                       client['state'] = peer['state']
+             
+        print('client list:')
+        for client in clients:
+             print(client)
+
+        print('selected_peers:')
+        for peer in selected_peers:
              print(peer)
 
         #sends each peer in the dht individually to the leader
@@ -161,11 +171,92 @@ while True:
                    peer_t = client
           
          #if so then remove peer from clients
-         if peer_t is not None and peer_t['state'] == 'Free':
+         if peer_t is not None and peer_t['state'] == 'Free' and peer_t not in selected_peers:
               clients.remove(peer_t)
               serverSocket.sendto(b"SUCCESS", address)
+
+              print('updated client list:')
+              for client in clients:
+                   print(client)
+
+              print('current selected_peers: ')
+              for peer in selected_peers:
+                   print(peer)
          #if not then return FAILURE
          else:
+              print('peer was not free')
+              serverSocket.sendto(b"FAILURE", address)
+
+    elif parts[0] == 'teardown-dht' and len(parts) == 2:
+         #print(f'here is the clients: {clients}')
+         #print(f'here is the selected_peers: {selected_peers}')
+
+         #make sure name is leader of the dht
+         peer_t = None
+         peer_name = parts[1]
+         #print(f'peer name is {peer_name}')
+         for client in clients:
+              if client['peer_name'] == peer_name:
+                   peer_t = client
+
+         if peer_t is not None and peer_t['state'] == 'Leader' and peer_t in selected_peers:
+              serverSocket.sendto(b"SUCCESS", address)
+              print('waiting for teardown-complete')
+              #manager waits for teardown-complete message
+              data, address = serverSocket.recvfrom(4096)
+              
+              message = data.decode('utf-8')
+              #print(f'got the message: {message}')
+              result_message = message.split()
+              #print(f'result_message: {result_message}')
+
+              if result_message[0] == 'teardown-complete' and len(result_message) == 2:
+                   #print('made it into if stmt')
+                   #now check if name is the leaders
+                   peer_t = None
+                   for client in clients:
+                        if client['peer_name'] == parts[1]:
+                             peer_t = client
+                        
+                   #print(f'peer_t is {peer_t}')
+                   #change state of each peer to Free
+                   if peer_t is not None and peer_t['state'] == 'Leader' and peer_t in selected_peers:
+                        #change state to Free and return success
+                        #for peer in selected_peers:
+                         #    selected_peers.remove(peer)   
+                        selected_peers.clear()
+                        for client in clients:
+                              client['state'] = 'Free'
+
+                        print(f'clients: {clients}')
+                        print(f'selected_peers: {selected_peers}')
+
+                        #respond with success
+                        serverSocket.sendto(b"SUCCESS", address)
+                        
+                   else:
+                        print('peer that send teardown-complete is not leader')
+                        serverSocket.sendto(b"FAILURE", address)
+              else:
+                   print('manager did not receive teardown-complete')
+                   print(f'received {message}')
+                   #failure
+                   serverSocket.sendto(b"FAILURE", address)
+               
+         else:
+              if peer_t is None:
+                   print('peer is not in client list')
+              elif peer_t['state'] != 'Leader':
+                   print(f"peer is not leader its {peer_t['state']}")
+                   print(f"here is the peer: {peer_t}")
+              elif peer_t not in selected_peers:
+                   print('peer is not in selected peers, here is current list: ')
+                   for peer in selected_peers:
+                        print(peer)
+              else:
+                   print(f'none fit here is peer_t: {peer_t}')
+                   
+              print('peer that sent teardown-dht is not the leader')
               serverSocket.sendto(b"FAILURE", address)
         
           
