@@ -265,6 +265,27 @@ while True:
                    
               print('peer that sent teardown-dht is not the leader')
               serverSocket.sendto(b"FAILURE", address)
+
+    elif parts[0] == "leave-dht" and len(parts) == 2:
+         peer_name = parts[1]
+
+         #check if DHT exists
+         #check if peer is maintaining DHT
+
+         #if so then respond with SUCCESS else FAILURE
+
+         #waits for dht-rebuilt
+
+
+    elif parts[0] == "join-dht" and len(parts) == 2:
+         peer_name = parts[1]
+
+         #check if DHT exists
+         #check if peer is free
+
+         #if so then response with SUCCESS else FAILURE
+
+         #waits for dht-rebuilt
         
           
     else:

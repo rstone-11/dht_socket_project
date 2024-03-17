@@ -151,6 +151,14 @@ def handle_manager_input(clientSocket, server_address):
             else:
                 print(f'mesage was {message}')
 
+        elif parts[0] == 'leave-dht':
+            #expects SUCCESS or FAILURE from manager
+            continue
+
+        elif parts[0] == 'join-dht':
+            #expects SUCCESS or FAILURE from manager
+            continue
+
         
 """
     Handles messages received from other peers in the DHT.
@@ -415,6 +423,11 @@ def handle_peer_socket(peerSocket):
                 identifier = None
                 message_j = json.dumps(message)
                 peerSocket.sendto(message_j.encode('utf-8'), next_address)
+        
+        elif command == "rebuild-dht":
+            #send this to its right neighbor who is the new leader
+            continue
+             
 
         else:
             print(f"Unkown command: {data}")
