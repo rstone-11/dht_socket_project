@@ -153,11 +153,23 @@ def handle_manager_input(clientSocket, server_address):
 
         elif parts[0] == 'leave-dht':
             #expects SUCCESS or FAILURE from manager
-            continue
+            data, address = clientSocket.recvfrom(4096)
+            message = data.decode('utf-8')
+
+            if message == "SUCCESS":
+                continue
+            else:
+                print(f"{message}")
 
         elif parts[0] == 'join-dht':
             #expects SUCCESS or FAILURE from manager
-            continue
+            data, address = clientSocket.recvfrom(4096)
+            message = data.decode('utf-8')
+
+            if message == "SUCCESS":
+                continue
+            else:
+                print(f"{message}")
 
         
 """

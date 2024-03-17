@@ -20,6 +20,7 @@ IP = socket.gethostbyname(hostname)
 print(f"running on ip: {IP}")
 
 def dht_rebuilt(peerName, newLeader):
+     return
      
 
 #listen for incoming datagrams
@@ -271,24 +272,76 @@ while True:
 
     elif parts[0] == "leave-dht" and len(parts) == 2:
          peer_name = parts[1]
+         peer_l = None
 
          #check if DHT exists
+         if any(client['state'] != 'Free' for client in clients):
+             serverSocket.sendto(b"FAILURE", address)
+             print("a dht has already been setup")
+             continue
+
          #check if peer is maintaining DHT
+         for peer in selected_peers:
+              if peer['peer_name'] == peer_name:
+                   peer_l = peer
+          
+         if peer_l is None:
+              #respond with FAILURE
+              serverSocket.sendto(b"FAILURE", address)
+              continue
+              
+         if peer_l['state'] == 'InDHT' or peer_l['state'] == 'Leader':
+              #respond with SUCCESS
+               serverSocket.sendto(b"SUCCESS", address)
+         
+               #waits for dht-rebuilt
+               data, address = serverSocket.recvfrom(4096)
+               message = data.decode('utf-8')
+               parts = message.split()
 
-         #if so then respond with SUCCESS else FAILURE
+               if parts[0] == 'dht-rebuilt' and len(parts) == 3:
+                    continue
+               else:
+                    continue
 
-         #waits for dht-rebuilt
-
-
+         else:
+               #respond with FAILURE
+              serverSocket.sendto(b"FAILURE", address)
+              
+    
     elif parts[0] == "join-dht" and len(parts) == 2:
          peer_name = parts[1]
+         peer_j = None
 
          #check if DHT exists
+         if any(client['state'] != 'Free' for client in clients):
+             serverSocket.sendto(b"FAILURE", address)
+             print("a dht has already been setup")
+             continue
+         
          #check if peer is free
+         for client in clients:
+              if client['peer_name'] == peer_name:
+                   peer_j = client
 
-         #if so then response with SUCCESS else FAILURE
+         if peer_j is not None and peer_j['state'] == 'Free':
+              #respond with SUCCESS
+              serverSocket.sendto(b"SUCCESS", address)
+              
+              #waits for dht-rebuilt
+              data, address = serverSocket.recvfrom(4096)
+              message = data.decode('utf-8')
+              parts = message.split()
 
-         #waits for dht-rebuilt
+              if parts[0] == 'dht-rebuilt' and len(parts) == 3:
+                    continue
+              else:
+                    continue
+
+         else:
+               #respond with failure
+               serverSocket.sendto(b"FAILURE", address)
+               
         
           
     else:
