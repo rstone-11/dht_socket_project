@@ -14,6 +14,7 @@ identifier = None    # The identifier of this peer within the DHT
 n = None      # The total number of peers in the DHT
 manager_address = None     # The address of the manager node
 s = None      #used in the hash function
+leaving_peer = None
 
 """
 Handles commands input by the user to interact with the manager.
@@ -70,7 +71,9 @@ def handle_manager_input(clientSocket, server_address):
                     "command": "set-id",
                     "identifier": identifier+1,
                     "n": n,
-                    "tuples": tuples
+                    "tuples": tuples,
+                    "year": year,
+                    "reset": 'no'
                 }
                 #converts into json-formatted string
                 message_json = json.dumps(message_data)
@@ -173,7 +176,7 @@ def handle_manager_input(clientSocket, server_address):
             #maybe in sends its identifier in the reset-id along with the peer that is leaving
             #so when it gets back to the new leader 
 
-            leaving_peer_address = (tuples[identifier][1], tuples[identifier][2])
+            leaving_peer = tuples[identifier]
 
             if message == "SUCCESS":
                 print(f"Received SUCCESS from manager starting teardown with identifier: {identifier}")
@@ -216,20 +219,26 @@ def handle_manager_input(clientSocket, server_address):
 
                     reset_message = {
                         "command": "reset-id",
-                        "leaving-peer": (leaving_peer_address),
-                        "new-n": n-1,
+                        "leaving-peer": leaving_peer,
+                        "new-n": n,
                         "identifier": 0,
                         "tuples": tuples
                     }
                     
-                    #converts into json-formatted string
                     message_json = json.dumps(reset_message)
-                    #encodes this string into bytes
                     message_bytes = message_json.encode('utf-8')
-                    #sends these bytes to its neighbor or (identifier+1)%n
                     
                     print(f"Sending the reset-id to new leader {tuples[0][0]}")
                     peerSocket.sendto(message_bytes, (tuples[0][1], tuples[0][2]))
+
+                    #wait for SUCCESS or reset-id-complete
+
+                    print('waiting for dht-rebuilt response from manager')
+                    #wait for dht-rebuilt SUCCESS from manager
+                    data, _ = clientSocket.recvfrom(4096)
+                    message = data.decode('utf-8')
+                    print(f'dht-rebuilt response was a {message}')
+
 
                 else:
                     print(f"Received this from teardown-complete: {data_decode}")
@@ -256,7 +265,7 @@ def handle_manager_input(clientSocket, server_address):
     param peerSocket: The socket for peer-to-peer communication.
 """
 def handle_peer_socket(peerSocket):
-    global identifier, n, tuples, s
+    global identifier, n, tuples, s, leaving_peer
     #dict to store locally hashed records
     local_hash = {} 
 
@@ -270,10 +279,13 @@ def handle_peer_socket(peerSocket):
         command = message_data["command"]
 
         if command == "set-id":
+            print(message_data)
             identifier = message_data["identifier"]
             
             n = message_data["n"]
             tuples = message_data["tuples"]
+
+            year = message_data['year']
 
             print(f'identifier: {identifier}, name: {tuples[identifier][0]}')
 
@@ -281,7 +293,7 @@ def handle_peer_socket(peerSocket):
             if(identifier == 0):
                 #records the number of records stored at each peer
                 record_counter = {peer_id: 0 for peer_id in range(n)}
-
+                
                 #do hash functions
                 #file_name = '1950-1952/details-1950.csv'
                 file_name = f"data/details-{year}.csv"
@@ -319,14 +331,14 @@ def handle_peer_socket(peerSocket):
                         #record needs to be forwarded to the correct peer through the ring
                         else:
 
-                            message_data = {
+                            store_message = {
                                 "command": "store",
                                 "peer_identifier": peer_id,
                                 "event_row": row,
                                 "pos": pos,
                                 "s": s
                             }
-                            message_json = json.dumps(message_data)
+                            message_json = json.dumps(store_message)
                             message_bytes = message_json.encode('utf-8')
 
                             #get peers neighbor
@@ -340,13 +352,19 @@ def handle_peer_socket(peerSocket):
                 for peer_id, count in record_counter.items():
                     print(f"Peer ID: {peer_id}, Record Count: {count}")
 
-                #sends message with the leaders name
-                message = f"dht-complete {tuples[0][0]}"
-                clientSocket.sendto(message.encode(), manager_address)
-                #expects response from the manager
-                data,_ = clientSocket.recvfrom(4096)
-                data = data.decode('utf-8')
-                print(data)
+                if message_data['reset'] == 'yes':
+                    print('sending rebuilt to manager')
+                    message = f"dht-rebuilt {leaving_peer[0]} {tuples[0][0]}"
+                    clientSocket.sendto(message.encode('utf-8'), manager_address)
+                else:
+                    #sends message with the leaders name
+                    print('sending dht-complete to manager')
+                    message = f"dht-complete {tuples[0][0]}"
+                    clientSocket.sendto(message.encode(), manager_address)
+                    #expects response from the manager
+                    data,_ = clientSocket.recvfrom(4096)
+                    data = data.decode('utf-8')
+                    print(data)
 
             #send set-id to its right neighbor
             else:
@@ -354,13 +372,15 @@ def handle_peer_socket(peerSocket):
                 next_identifier = (identifier+1) % n
                 nextPeer = tuples[next_identifier]
                 nextPeerAddress = (nextPeer[1], nextPeer[2])
-                message_data = {
+                set_message = {
                     "command": "set-id",
                     "identifier": next_identifier,
                     "n": n,
-                    "tuples": tuples
+                    "tuples": tuples,
+                    "year": year,
+                    "reset": message_data['reset'] 
                 }
-                message_json = json.dumps(message_data)
+                message_json = json.dumps(set_message)
                 message_bytes = message_json.encode('utf-8')
                 peerSocket.sendto(message_bytes, nextPeerAddress)
 
@@ -524,6 +544,34 @@ def handle_peer_socket(peerSocket):
         
         elif command == "reset-id":
             print(message_data)
+            #set its new identifier, tuples, and n
+            identifier = message_data['identifier']
+            tuples = message_data['tuples']
+            n = message_data['new-n']
+            leaving_peer = message_data['leaving-peer']
+
+            #send out set-id which goes around the ring and once it gets back to leader
+
+            set_message = {
+                    "command": "set-id",
+                    "identifier": identifier+1,
+                    "n": n,
+                    "tuples": tuples,
+                    "year": year,
+                    "reset": 'yes'
+            }
+            #converts into json-formatted string
+            message_json = json.dumps(set_message)
+            #encodes this string into bytes
+            message_bytes = message_json.encode('utf-8')
+            #sends these bytes to its neighbor or (identifier+1)%n
+            nextPeerAddress = (tuples[(identifier+1)%n][1], tuples[(identifier+1)%n][2])
+            peerSocket.sendto(message_bytes, nextPeerAddress)
+
+            #add one to identifier and send to its right neighbor
+
+            #if identifier is 0 then send reset-id message to leaving peer
+            #this then triggers it to send the rebuild-dht to the new leader
 
 
         elif command == "rebuild-dht":

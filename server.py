@@ -313,6 +313,7 @@ while True:
 
               if result_message[0] == 'teardown-complete' and len(result_message) == 2:
                   #return SUCCESS to leaving peer
+                  print('received teardown complete, sending SUCCESS')
                   serverSocket.sendto(b"SUCCESS", address)
 
                   #at manager we need to remove the peer from selected_peers who initiated leave
@@ -361,15 +362,41 @@ while True:
                     peer_info = json.dumps(tuple)
                     serverSocket.sendto(peer_info.encode('utf-8'), address)
 
+                  #waits for dht-copmlete
+                  #data, address = serverSocket.recvfrom(4096)
+                  #message = data.decode('utf-8')
+                  #print(message)
+
+                  #send SUCCESS back to new leader
+                  #if message == f"dht-complete {tuples[0][0]}":
+                      #serverSocket.sendto(b"SUCCESS", address) 
+
+                  """print("new client list")
+                  for client in clients:
+                       print(client)
+                  print("new selected_peers:")
+                  for peer in selected_peers:
+                       print(peer)"""
+
+                  print('waiting for dht-rebuilt')
                   #waits for dht-rebuilt
                   data, address = serverSocket.recvfrom(4096)
                   message = data.decode('utf-8')
                   parts = message.split()
-
+                  print(f'received: {message}')
+                  leaving_peer_address = (peer_l['ipv4_address'], peer_l['m_port'])
+                  print(f'sending this to {leaving_peer_address}')
                   if parts[0] == 'dht-rebuilt' and len(parts) == 3:
-                    continue
+                    print('received dht-rebuilt')
+                    if parts[1] == peer_l['peer_name'] and parts[2] == newLeader['peer_name']:
+                         serverSocket.sendto(b"SUCCESS", leaving_peer_address)
+                    else: 
+                         print('returned failure as names didn\'t match up')
+                         print(f"first name should have been {peer_l['peer_name']} and second should have been {newLeader['peer_name']}")
+                         serverSocket.sendto(b"FAILURE", leaving_peer_address)
                   else:
-                    continue
+                    print('retured failure as command was wrong')
+                    serverSocket.sendto(b"FAILURE", leaving_peer_address)
 
          else:
                #respond with FAILURE
