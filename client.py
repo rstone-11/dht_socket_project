@@ -5,6 +5,7 @@ import json
 import threading
 import csv
 import math
+import time
 
 # Global variables to hold key data shared across functions
 tuples = []      # To store information about peers in the DHT
@@ -134,7 +135,9 @@ def handle_manager_input(clientSocket, server_address):
                 next_id = (identifier+1) % n
                 next_address = (tuples[next_id][1], tuples[next_id][2])
                 message = {
-                    "command": "teardown"
+                    "command": "teardown",
+                    "id": 0,
+                    "leave": "no"
                 }
                 message_j = json.dumps(message)
                 peerSocket.sendto(message_j.encode('utf-8'), next_address)
@@ -156,10 +159,86 @@ def handle_manager_input(clientSocket, server_address):
             data, address = clientSocket.recvfrom(4096)
             message = data.decode('utf-8')
 
+            #saves its identifier+1
+            #initiates a teardown
+
+            #at this point no local hash and no identifiers
+            #now the leader will be waiting for the new tuples
+            #will then send a reset-id around to set the identifiers
+            #when it reaches back it knows its complete
+            #will then send a rebuild-dht command to its neighbor to construct the local DHTs
+
+            #waits for the SUCCESS message from manager
+
+            #maybe in sends its identifier in the reset-id along with the peer that is leaving
+            #so when it gets back to the new leader 
+
+            leaving_peer_address = (tuples[identifier][1], tuples[identifier][2])
+
             if message == "SUCCESS":
-                continue
+                print(f"Received SUCCESS from manager starting teardown with identifier: {identifier}")
+                next_id = (identifier+1)%n
+                next_peer = tuples[identifier]
+                #n = n-1
+                message = {
+                    "command": "teardown",
+                    "id": identifier,
+                    "leave": 'yes'
+                }
+                message_j = json.dumps(message)
+                peerSocket.sendto(message_j.encode('utf-8'), (next_peer[1], next_peer[2]))
+
+                #wait for new tuples to be sent back from manager
+                #expects n messages from manager, each is a tuple representing a peer in the dht
+
+                #expect SUCCESS to begin create of new tuples
+                data, s_address = clientSocket.recvfrom(4096)
+                data_decode = data.decode('utf-8')
+
+                if data_decode == "SUCCESS":
+
+                    n = n-1
+                    print(f"n: {n}")
+                    tuples.clear()
+                    for i in range(n):
+                        data, _ = clientSocket.recvfrom(4096)
+                        peer_info = data.decode('utf-8')
+                        dataTuple = json.loads(peer_info)
+                        tuples.append(dataTuple)
+
+                    #leader will send the setup-dht message so its identifier is 0
+                    newLeader = tuples[0]
+                    nextLeaderAddress = (newLeader[1], newLeader[2])
+
+                    print('tuples that are received')
+                    for tuple in tuples:
+                        print(tuple)
+
+                    reset_message = {
+                        "command": "reset-id",
+                        "leaving-peer": (leaving_peer_address),
+                        "new-n": n-1,
+                        "identifier": 0,
+                        "tuples": tuples
+                    }
+                    
+                    #converts into json-formatted string
+                    message_json = json.dumps(reset_message)
+                    #encodes this string into bytes
+                    message_bytes = message_json.encode('utf-8')
+                    #sends these bytes to its neighbor or (identifier+1)%n
+                    
+                    print(f"Sending the reset-id to new leader {tuples[0][0]}")
+                    peerSocket.sendto(message_bytes, (tuples[0][1], tuples[0][2]))
+
+                else:
+                    print(f"Received this from teardown-complete: {data_decode}")
+            
+
             else:
                 print(f"{message}")
+
+
 
         elif parts[0] == 'join-dht':
             #expects SUCCESS or FAILURE from manager
@@ -409,7 +488,7 @@ def handle_peer_socket(peerSocket):
 
         elif command == "teardown":
 
-            if identifier == 0:
+            if identifier == message_data['id']:
 
                 #delete own local hash
                 local_hash.clear()
@@ -420,9 +499,14 @@ def handle_peer_socket(peerSocket):
                 identifier = None
                 clientSocket.sendto(m.encode('utf-8'), server_address)
 
-                #expects either SUCCESS or FAILURE
-                data, _ = clientSocket.recvfrom(4096)
-                print(f"teardown-complete response: {data.decode('utf-8')}")
+
+                if message_data['leave'] == 'yes':
+                    print(f'made back to identifier: {identifier} for teardown-complete')
+                else:
+                    #expects either SUCCESS or FAILURE
+                    data, _ = clientSocket.recvfrom(4096)
+                    print(f"teardown-complete response: {data.decode('utf-8')}")
+
             else:
                 #delete own local hash and send to its right neighbor
                 local_hash.clear()
@@ -430,12 +514,18 @@ def handle_peer_socket(peerSocket):
                 next_id = (identifier+1) % n
                 next_address = (tuples[next_id][1], tuples[next_id][2])
                 message = {
-                    "command": "teardown"
+                    "command": "teardown",
+                    "id": message_data['id'],
+                    "leave": message_data['leave']
                 }
                 identifier = None
                 message_j = json.dumps(message)
                 peerSocket.sendto(message_j.encode('utf-8'), next_address)
         
+        elif command == "reset-id":
+            print(message_data)
+
+
         elif command == "rebuild-dht":
             #send this to its right neighbor who is the new leader
             continue
