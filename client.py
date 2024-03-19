@@ -56,14 +56,10 @@ def handle_manager_input(clientSocket, server_address):
                     dataTuple = json.loads(peer_info)
                     tuples.append(dataTuple)
 
-                
-
-                #nextPeer ['name']['ipv4_address']['p_port']
                 #leader will send the setup-dht message so its identifier is 0
                 identifier = 0
                 nextPeer = tuples[(identifier+1) % n]
                 nextPeerAddress = (nextPeer[1], nextPeer[2])
-
                 
                 #set-id <identifier> <n=ring size> <tuples>
                 #dict to represent data being transported
@@ -95,8 +91,6 @@ def handle_manager_input(clientSocket, server_address):
             random_address = (r_peer[1], r_peer[2])
 
             #send a find-event command to this peer 
-            #for now hardcode the event_id
-
             #I = list from 0 to n-1
             n = r_peer[5]
             I = list(range(n))
@@ -144,16 +138,6 @@ def handle_manager_input(clientSocket, server_address):
                 }
                 message_j = json.dumps(message)
                 peerSocket.sendto(message_j.encode('utf-8'), next_address)
-                """
-                name = tuples[identifier][0]
-                m = f"teardown-complete {name}"
-                #print(f'sending to {address}')
-                clientSocket.sendto(m.encode('utf-8'), address)
-
-                #expects either SUCCESS or FAILURE
-                data, _ = clientSocket.recvfrom(4096)
-                print(f'teardown-complete response: {data.decode('utf-8')}')
-                """
             else:
                 print(f'mesage was {message}')
 
@@ -162,27 +146,12 @@ def handle_manager_input(clientSocket, server_address):
             data, address = clientSocket.recvfrom(4096)
             message = data.decode('utf-8')
 
-            #saves its identifier+1
-            #initiates a teardown
-
-            #at this point no local hash and no identifiers
-            #now the leader will be waiting for the new tuples
-            #will then send a reset-id around to set the identifiers
-            #when it reaches back it knows its complete
-            #will then send a rebuild-dht command to its neighbor to construct the local DHTs
-
-            #waits for the SUCCESS message from manager
-
-            #maybe in sends its identifier in the reset-id along with the peer that is leaving
-            #so when it gets back to the new leader 
-
-
             if message == "SUCCESS":
                 leaving_peer = tuples[identifier]
-                print(f"Received SUCCESS from manager starting teardown with identifier: {identifier}")
+                print(f"Received SUCCESS from manager starting teardown")
                 next_id = (identifier+1)%n
                 next_peer = tuples[identifier]
-                #n = n-1
+                
                 message = {
                     "command": "teardown",
                     "id": identifier,
@@ -191,17 +160,14 @@ def handle_manager_input(clientSocket, server_address):
                 message_j = json.dumps(message)
                 peerSocket.sendto(message_j.encode('utf-8'), (next_peer[1], next_peer[2]))
 
-                #wait for new tuples to be sent back from manager
-                #expects n messages from manager, each is a tuple representing a peer in the dht
-
                 #expect SUCCESS to begin create of new tuples
+                #wait for new tuples to be sent back from manager
                 data, s_address = clientSocket.recvfrom(4096)
                 data_decode = data.decode('utf-8')
 
                 if data_decode == "SUCCESS":
-
+                    #size of dht is decreased by 1
                     n = n-1
-                    print(f"n: {n}")
                     tuples.clear()
                     for i in range(n):
                         data, _ = clientSocket.recvfrom(4096)
@@ -211,12 +177,7 @@ def handle_manager_input(clientSocket, server_address):
 
                     #leader will send the setup-dht message so its identifier is 0
                     newLeader = tuples[0]
-                    nextLeaderAddress = (newLeader[1], newLeader[2])
-
-                    print('tuples that are received')
-                    for tuple in tuples:
-                        print(tuple)
-
+                    #sending to the new leader
                     reset_message = {
                         "command": "reset-id",
                         "leaving-peer": leaving_peer,
@@ -229,10 +190,7 @@ def handle_manager_input(clientSocket, server_address):
                     message_json = json.dumps(reset_message)
                     message_bytes = message_json.encode('utf-8')
                     
-                    print(f"Sending the reset-id to new leader {tuples[0][0]}")
                     peerSocket.sendto(message_bytes, (tuples[0][1], tuples[0][2]))
-
-                    #wait for SUCCESS or reset-id-complete
 
                     print('waiting for dht-rebuilt response from manager')
                     #wait for dht-rebuilt SUCCESS from manager
@@ -244,11 +202,8 @@ def handle_manager_input(clientSocket, server_address):
                 else:
                     print(f"Received this from teardown-complete: {data_decode}")
             
-
             else:
                 print(f"{message}")
-
-
 
         elif parts[0] == 'join-dht':
             #expects SUCCESS or FAILURE from manager
@@ -261,7 +216,6 @@ def handle_manager_input(clientSocket, server_address):
                 #set the joining peers identifier
                 #send reset-id then rebuild-dht
                 n = int(parts[1])
-            
 
                 message = {
                     "command": "teardown",
@@ -274,20 +228,16 @@ def handle_manager_input(clientSocket, server_address):
                 #expect SUCCESS to begin create of new tuples
                 data, s_address = clientSocket.recvfrom(4096)
                 data_decode = data.decode('utf-8')
-
+                #size of dht is increased by 1
                 n = n+1
-                print(f"n: {n}")
                 tuples.clear()
                 for i in range(n):
                     data, _ = clientSocket.recvfrom(4096)
                     peer_info = data.decode('utf-8')
                     dataTuple = json.loads(peer_info)
                     tuples.append(dataTuple)
-                
-                print('tuples that are received')
-                for tuple in tuples:
-                    print(tuple)
 
+                #sending to the leader
                 reset_message = {
                     "command": "reset-id",
                     "new-n": n,
@@ -299,10 +249,7 @@ def handle_manager_input(clientSocket, server_address):
                 message_json = json.dumps(reset_message)
                 message_bytes = message_json.encode('utf-8')
                 
-                print(f"Sending the reset-id to leader {tuples[0][0]}")
                 peerSocket.sendto(message_bytes, (tuples[0][1], tuples[0][2]))
-
-                #wait for SUCCESS or reset-id-complete
 
                 print('waiting for dht-rebuilt response from manager')
                 #wait for dht-rebuilt SUCCESS from manager
@@ -327,17 +274,13 @@ def handle_peer_socket(peerSocket):
         data, address = peerSocket.recvfrom(4096)
         
         #data is sent in json, then checks what command was sent
-        
         message_data = json.loads(data)
         command = message_data["command"]
 
         if command == "set-id":
-            print(message_data)
             identifier = message_data["identifier"]
-            
             n = message_data["n"]
             tuples = message_data["tuples"]
-
             year = message_data['year']
 
             print(f'identifier: {identifier}, name: {tuples[identifier][0]}')
@@ -348,10 +291,8 @@ def handle_peer_socket(peerSocket):
                 record_counter = {peer_id: 0 for peer_id in range(n)}
                 
                 #do hash functions
-                #file_name = '1950-1952/details-1950.csv'
                 file_name = f"data/details-{year}.csv"
-                #s = 449
-                #get event_id
+
                 with open(file_name, mode='r') as csvfile:
                     #list of dictionaries
                     #attributes - EVENT_ID,STATE,YEAR,MONTH_NAME,EVENT_TYPE,CZ_TYPE,CZ_NAME,INJURIES_DIRECT,INJURIES_INDIRECT,DEATHS_DIRECT,DEATHS_INDIRECT,DAMAGE_PROPERTY,DAMAGE_CROPS,TOR_F_SCALE
@@ -359,8 +300,7 @@ def handle_peer_socket(peerSocket):
                     #get length of list = number of rows
                     row_count = len(rows)
                     s = next_prime(2 * row_count)
-                    print(f"s: {s}")
-
+                    
                     for row in rows:
                         event_id = int(row["EVENT_ID"])
                         #event_string = json.dumps(row)  
@@ -406,7 +346,6 @@ def handle_peer_socket(peerSocket):
                     print(f"Peer ID: {peer_id}, Record Count: {count}")
 
                 if message_data['reset'] == 'yes':
-                    print('sending rebuilt to manager')
                     if leaving_peer is not None:
                         message = f"dht-rebuilt {leaving_peer[0]} {tuples[0][0]}"
                     else: message = f"dht-rebuilt {tuples[len(tuples)-1][0]} {tuples[0][0]}"
@@ -445,8 +384,6 @@ def handle_peer_socket(peerSocket):
             peer_identifier = message_data['peer_identifier']
             event_row = message_data['event_row']
             pos = message_data['pos']
-
-            
             s = message_data['s']
 
             #send data to neighbor unless this is the right peer
@@ -459,7 +396,7 @@ def handle_peer_socket(peerSocket):
                 
                 
             else:
-                #send to neighbor
+                #send to right neighbor
                 nextPeer = tuples[(identifier+1) % n]
                 nextPeerAddress = (nextPeer[1], nextPeer[2])
                 message_data = {
@@ -479,10 +416,6 @@ def handle_peer_socket(peerSocket):
             s_tuple = message_data['s_tuple']
             s_address = (s_tuple[1], s_tuple[2])
 
-            #print(f"at identifier: {identifier}")
-            #print(f"looking for event-id: {event_id}")
-            #print(f"using s: {s}")
-
             #remove peer from I and add to id-seq
             I = message_data['I']
             if identifier in I:
@@ -497,15 +430,14 @@ def handle_peer_socket(peerSocket):
             peer_id = pos % n
 
             if peer_id == identifier:
-                #print('Identifier matches')
+                
                 #check if its in the local hash
                 if pos in local_hash:
-                    #print(f'pos is in local hash: {pos}')
+                    
                     #send 3-tuple to S (SUCCESS, event record, and set-id) else (FAILURE)
                     for row in local_hash[pos]:
-                        #print(f"event at this row is {row['EVENT_ID']}")
-                        if int(row['EVENT_ID']) == event_id:
-                            #print('got the right event')
+                        
+                        if int(row['EVENT_ID']) == event_id:       
                             event_row = row
                             event_success = {
                                 "command": "find-event-result",
@@ -515,8 +447,7 @@ def handle_peer_socket(peerSocket):
                             }
                             event_bytes = json.dumps(event_success).encode('utf-8')
                             peerSocket.sendto(event_bytes, s_address)
-                            break
-                            
+                            break     
                 else:
                     event_failure = {
                         "command": "find-event-result",
@@ -526,10 +457,8 @@ def handle_peer_socket(peerSocket):
                     event_bytes = json.dumps(event_failure).encode('utf-8')
                     peerSocket.sendto(event_bytes, s_address)
                     
-
             #forwarded using hot-potato protocal
             else:
-                #print('not right peer being forwarded')
                 next_peer_id = random.choice(I)
                 #get peer from tuples
                 next_peer = tuples[next_peer_id]
@@ -565,19 +494,18 @@ def handle_peer_socket(peerSocket):
         elif command == "teardown":
 
             if identifier == message_data['id']:
-
                 #delete own local hash
                 local_hash.clear()
-
+                #teardown is completed so send message to manager
                 name = tuples[identifier][0]
                 m = f"teardown-complete {name}"
-                #print(f'sending to {address}')
+                
                 identifier = None
                 clientSocket.sendto(m.encode('utf-8'), server_address)
 
-
+                #if this is part of a leave or join then no need to send teardown-complete
                 if message_data['leave'] == 'yes':
-                    print(f'made back to identifier: {identifier} for teardown-complete')
+                    continue
                 else:
                     #expects either SUCCESS or FAILURE
                     data, _ = clientSocket.recvfrom(4096)
@@ -608,9 +536,7 @@ def handle_peer_socket(peerSocket):
             if message_data['function'] == 'leave':
                 leaving_peer = message_data['leaving-peer']
             
-
             #send out set-id which goes around the ring and once it gets back to leader
-
             set_message = {
                     "command": "set-id",
                     "identifier": identifier+1,
@@ -627,22 +553,9 @@ def handle_peer_socket(peerSocket):
             nextPeerAddress = (tuples[(identifier+1)%n][1], tuples[(identifier+1)%n][2])
             peerSocket.sendto(message_bytes, nextPeerAddress)
 
-            #add one to identifier and send to its right neighbor
-
-            #if identifier is 0 then send reset-id message to leaving peer
-            #this then triggers it to send the rebuild-dht to the new leader
-
-
-        elif command == "rebuild-dht":
-            #send this to its right neighbor who is the new leader
-            continue
-             
-
         else:
             print(f"Unkown command: {data}")
             
-
-
 
 def next_prime(n):
     #brute force approach
