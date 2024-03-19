@@ -176,9 +176,9 @@ def handle_manager_input(clientSocket, server_address):
             #maybe in sends its identifier in the reset-id along with the peer that is leaving
             #so when it gets back to the new leader 
 
-            leaving_peer = tuples[identifier]
 
             if message == "SUCCESS":
+                leaving_peer = tuples[identifier]
                 print(f"Received SUCCESS from manager starting teardown with identifier: {identifier}")
                 next_id = (identifier+1)%n
                 next_peer = tuples[identifier]
@@ -222,7 +222,8 @@ def handle_manager_input(clientSocket, server_address):
                         "leaving-peer": leaving_peer,
                         "new-n": n,
                         "identifier": 0,
-                        "tuples": tuples
+                        "tuples": tuples,
+                        "function": 'leave'
                     }
                     
                     message_json = json.dumps(reset_message)
@@ -253,9 +254,61 @@ def handle_manager_input(clientSocket, server_address):
             #expects SUCCESS or FAILURE from manager
             data, address = clientSocket.recvfrom(4096)
             message = data.decode('utf-8')
+            parts = message.split()
 
-            if message == "SUCCESS":
-                continue
+            if parts[0] == "SUCCESS":
+                #receive joining peer tuple and append to tuples
+                #set the joining peers identifier
+                #send reset-id then rebuild-dht
+                n = int(parts[1])
+            
+
+                message = {
+                    "command": "teardown",
+                    "id": 0,
+                    "leave": 'yes'
+                }
+                message_j = json.dumps(message)
+                peerSocket.sendto(message_j.encode('utf-8'), (parts[2], int(parts[3])))
+
+                #expect SUCCESS to begin create of new tuples
+                data, s_address = clientSocket.recvfrom(4096)
+                data_decode = data.decode('utf-8')
+
+                n = n+1
+                print(f"n: {n}")
+                tuples.clear()
+                for i in range(n):
+                    data, _ = clientSocket.recvfrom(4096)
+                    peer_info = data.decode('utf-8')
+                    dataTuple = json.loads(peer_info)
+                    tuples.append(dataTuple)
+                
+                print('tuples that are received')
+                for tuple in tuples:
+                    print(tuple)
+
+                reset_message = {
+                    "command": "reset-id",
+                    "new-n": n,
+                    "identifier": 0,
+                    "tuples": tuples,
+                    "function": "join"
+                }
+                
+                message_json = json.dumps(reset_message)
+                message_bytes = message_json.encode('utf-8')
+                
+                print(f"Sending the reset-id to leader {tuples[0][0]}")
+                peerSocket.sendto(message_bytes, (tuples[0][1], tuples[0][2]))
+
+                #wait for SUCCESS or reset-id-complete
+
+                print('waiting for dht-rebuilt response from manager')
+                #wait for dht-rebuilt SUCCESS from manager
+                data, _ = clientSocket.recvfrom(4096)
+                message = data.decode('utf-8')
+                print(f'dht-rebuilt response was a {message}')
             else:
                 print(f"{message}")
 
@@ -354,8 +407,11 @@ def handle_peer_socket(peerSocket):
 
                 if message_data['reset'] == 'yes':
                     print('sending rebuilt to manager')
-                    message = f"dht-rebuilt {leaving_peer[0]} {tuples[0][0]}"
+                    if leaving_peer is not None:
+                        message = f"dht-rebuilt {leaving_peer[0]} {tuples[0][0]}"
+                    else: message = f"dht-rebuilt {tuples[len(tuples)-1][0]} {tuples[0][0]}"
                     clientSocket.sendto(message.encode('utf-8'), manager_address)
+                    leaving_peer = None
                 else:
                     #sends message with the leaders name
                     print('sending dht-complete to manager')
@@ -548,7 +604,10 @@ def handle_peer_socket(peerSocket):
             identifier = message_data['identifier']
             tuples = message_data['tuples']
             n = message_data['new-n']
-            leaving_peer = message_data['leaving-peer']
+
+            if message_data['function'] == 'leave':
+                leaving_peer = message_data['leaving-peer']
+            
 
             #send out set-id which goes around the ring and once it gets back to leader
 

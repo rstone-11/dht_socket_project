@@ -283,7 +283,7 @@ while True:
          #check if DHT exists
          if not any(client['state'] == 'Leader' for client in clients):
              serverSocket.sendto(b"FAILURE", address)
-             print("a dht has already been setup")
+             print("there is no dht setup")
              continue
 
          leaving_peer_id = None
@@ -323,7 +323,7 @@ while True:
                   newLeader = selected_peers[(leaving_peer_id+1)%n]
 
                   #remove the leaving peer from tuples and set its client state to 'Free'
-                  n = n-1
+                  n = len(selected_peers) - 1
                   for client in clients:
                        if client['peer_name'] == peer_l['peer_name']:
                             client['state'] = 'Free'
@@ -393,9 +393,11 @@ while True:
                     else: 
                          print('returned failure as names didn\'t match up')
                          print(f"first name should have been {peer_l['peer_name']} and second should have been {newLeader['peer_name']}")
+                         print(f"but was {parts[1]} and {parts[2]}")
                          serverSocket.sendto(b"FAILURE", leaving_peer_address)
                   else:
                     print('retured failure as command was wrong')
+                    print(f'message: {message}')
                     serverSocket.sendto(b"FAILURE", leaving_peer_address)
 
          else:
@@ -408,9 +410,9 @@ while True:
          peer_j = None
 
          #check if DHT exists
-         if any(client['state'] != 'Free' for client in clients):
+         if not any(client['state'] == 'Leader' for client in clients):
              serverSocket.sendto(b"FAILURE", address)
-             print("a dht has already been setup")
+             print("there is no dht setup")
              continue
          
          #check if peer is free
@@ -420,17 +422,54 @@ while True:
 
          if peer_j is not None and peer_j['state'] == 'Free':
               #respond with SUCCESS
-              serverSocket.sendto(b"SUCCESS", address)
-              
-              #waits for dht-rebuilt
-              data, address = serverSocket.recvfrom(4096)
+              print('sending success to joining peer')
+              print(f'sending n {n}')
+              m = f"SUCCESS {n} {tuples[1][1]} {tuples[1][2]}"
+              serverSocket.sendto(m.encode('utf-8'), address)
+
+              peer_j['state'] = 'InDHT'
+              joining_peer_address = (peer_j['ipv4_address'], peer_j['m_port'])
+
+               #add peer_j to selected_peers and send as tuple to joining peer
+              n = len(selected_peers) + 1
+              selected_peers.append(peer_j)
+              tuples.append([peer_j['peer_name'], peer_j['ipv4_address'], peer_j['p_port']])
+          
+              data, _ = serverSocket.recvfrom(4096)
+              #waits for teardown complete
               message = data.decode('utf-8')
+              #print(f'got the message: {message}')
+              result_message = message.split()
+
+              if result_message[0] == 'teardown-complete' and len(result_message) == 2:
+                  #return SUCCESS to leaving peer
+                  print('received teardown complete, sending SUCCESS')
+                  serverSocket.sendto(b"SUCCESS", joining_peer_address)
+
+                  print('sending these tuples')
+                  for tuple in tuples:
+                    print(tuple)
+                    peer_info = json.dumps(tuple)
+                    serverSocket.sendto(peer_info.encode('utf-8'), joining_peer_address)
+
+
+              data, address = serverSocket.recvfrom(4096)
+               #waits for teardown complete
+              message = data.decode('utf-8')
+               #print(f'got the message: {message}')
               parts = message.split()
 
               if parts[0] == 'dht-rebuilt' and len(parts) == 3:
-                    continue
+                    if parts[1] == peer_j['peer_name'] and parts[2] == tuples[0][0]:
+                         serverSocket.sendto(b"SUCCESS", (peer_j['ipv4_address'], peer_j['m_port']))
+                         print('new selected_peers:')
+                         for peer in selected_peers:
+                              print(peer)
+                    else:
+                         print('parts didn\'t match')
               else:
-                    continue
+                    print('dht-rebuilt was wrong')
+                    serverSocket.sendto(b"FAILURE", (peer_j['ipv4_address'], peer_j['m_port']))
 
          else:
                #respond with failure
