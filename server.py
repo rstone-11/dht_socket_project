@@ -90,7 +90,7 @@ while True:
                 leader = client  
                 leader_address = (client['ipv4_address'], client['m_port'])
                 serverSocket.sendto(b"SUCCESS", (client['ipv4_address'], client['m_port']))
-        print(f'leader of current dht is {leader} at {leader_address}')
+        print(f"leader of current dht is {leader['peer_name']}")
             
         #selects n-1 Free users from registered peers and changes each one’s state to InDHT
         selected_peers = [leader] + random.sample([client for client in clients if client['state'] == 'Free'], n-1)
@@ -203,7 +203,7 @@ while True:
 
          if peer_t is not None and peer_t['state'] == 'Leader' and peer_t in selected_peers:
               serverSocket.sendto(b"SUCCESS", address)
-              print('waiting for teardown-complete')
+              
               #manager waits for teardown-complete message
               data, address = serverSocket.recvfrom(4096)
               
@@ -216,7 +216,7 @@ while True:
                    for client in clients:
                         if client['peer_name'] == parts[1]:
                              peer_t = client
-                        
+                   print('received teardown-complete')
                    #change state of each peer to Free
                    if peer_t is not None and peer_t['state'] == 'Leader' and peer_t in selected_peers:
                         #change state to Free and return success
@@ -226,6 +226,9 @@ while True:
 
                         #respond with success
                         serverSocket.sendto(b"SUCCESS", address)
+                        print('list of clients after teardown')
+                        for client in clients:
+                             print(client)
                    else:
                         print('peer that send teardown-complete is not leader')
                         serverSocket.sendto(b"FAILURE", address)

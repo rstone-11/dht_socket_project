@@ -251,7 +251,6 @@ def handle_manager_input(clientSocket, server_address):
                 
                 peerSocket.sendto(message_bytes, (tuples[0][1], tuples[0][2]))
 
-                print('waiting for dht-rebuilt response from manager')
                 #wait for dht-rebuilt SUCCESS from manager
                 data, _ = clientSocket.recvfrom(4096)
                 message = data.decode('utf-8')
@@ -527,7 +526,7 @@ def handle_peer_socket(peerSocket):
                 peerSocket.sendto(message_j.encode('utf-8'), next_address)
         
         elif command == "reset-id":
-            print(message_data)
+            #print(message_data)
             #set its new identifier, tuples, and n
             identifier = message_data['identifier']
             tuples = message_data['tuples']
